@@ -7,6 +7,7 @@ async function createTables() {
       CREATE TABLE IF NOT EXISTS hosts (
         id SERIAL PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
+        name VARCHAR(255) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL
       );
     `);
@@ -65,8 +66,6 @@ async function createTables() {
     console.log('All tables created successfully!');
   } catch (err) {
     console.error('Error creating tables:', err);
-  } finally {
-    db.end(); 
   }
 }
 
