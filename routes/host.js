@@ -1,7 +1,7 @@
 import express from 'express'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
-import pool from '../database/db.js'
+import pool from '../config/db.js'
 import authlimit from '../middleware/ratelimiting.js'
 
 import 'dotenv/config'
