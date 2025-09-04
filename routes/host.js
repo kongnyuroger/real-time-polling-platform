@@ -116,6 +116,64 @@ router.post('/create-session', authenticateToken, async (req, res) => {
     }
 });
 
+// GET all sessions for a logged-in host
+router.get('/sessions', authenticateToken, async (req, res) => {
+    try {
+        const hostId = req.user.id;
+
+        const sessions = await pool.query(
+            'SELECT * FROM sessions WHERE host_id = $1 ORDER BY id DESC',
+            [hostId]
+        );
+
+        return res.status(200).json({
+            message: 'Sessions retrieved successfully',
+            sessions: sessions.rows
+        });
+    } catch (err) {
+        console.error('Get sessions route error:', err);
+        return res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
+});
+
+
+// GET a specific session and its polls
+router.get('/sessions/:sessionId', authenticateToken, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const hostId = req.user.id;
+
+        // Fetch the session and verify host ownership
+        const sessionResult = await pool.query('SELECT * FROM sessions WHERE id = $1 AND host_id = $2', [sessionId, hostId]);
+        if (sessionResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Session not found or forbidden' });
+        }
+        const session = sessionResult.rows[0];
+
+        // Fetch all polls for this session
+        const pollsResult = await pool.query('SELECT * FROM polls WHERE session_id = $1 ORDER BY id ASC', [sessionId]);
+        const polls = pollsResult.rows;
+
+        // For each poll, fetch its options
+        for (let poll of polls) {
+            if (poll.type !== 'open-ended') {
+                const optionsResult = await pool.query('SELECT * FROM poll_options WHERE poll_id = $1', [poll.id]);
+                poll.options = optionsResult.rows;
+            } else {
+                poll.options = [];
+            }
+        }
+
+        return res.status(200).json({
+            message: 'Session and polls retrieved successfully',
+            session: session,
+            polls: polls
+        });
+    } catch (err) {
+        console.error('Get single session route error:', err);
+        return res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
+});
 
 
 export default router 
