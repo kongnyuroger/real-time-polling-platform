@@ -3,12 +3,13 @@ import cookieParser from 'cookie-parser'
 import logger from 'morgan';
 import express from 'express';
 import path from 'path'
+import createTables from './config/db-init.js'
 
 import  indexRouter from './routes/index.js';
 import usersRouter from './routes/users.js';
 
 const app = express();
-
+createTables();
 // view engine setup
 
 app.set('view engine', 'jade');
