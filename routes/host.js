@@ -176,5 +176,56 @@ router.get('/sessions/:sessionId', authenticateToken, async (req, res) => {
 });
 
 
+
+// Create new poll for a session
+router.post('/sessions/:sessionId/polls', authenticateToken, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const { question, type, options } = req.body;
+        const hostId = req.user.id;
+
+        if (!question || !type) {
+            return res.status(400).json({ error: 'Question and type are required' });
+        }
+        
+        if (type !== 'open-ended' && (!options || !Array.isArray(options) || options.length === 0)) {
+            return res.status(400).json({ error: 'Options are required for non-open-ended polls' });
+        }
+
+        // Verify the host owns the session
+        const sessionResult = await pool.query('SELECT host_id FROM sessions WHERE id = $1', [sessionId]);
+        if (sessionResult.rows.length === 0 || sessionResult.rows[0].host_id !== hostId) {
+            return res.status(403).json({ error: 'Forbidden: You do not own this session' });
+        }
+
+        const newPoll = await pool.query(
+            'INSERT INTO polls (session_id, question, status, type) VALUES ($1, $2, $3, $4) RETURNING *',
+            [sessionId, question, 'draft', type]
+        );
+        const pollId = newPoll.rows[0].id;
+
+        // Insert options if the poll is not open-ended
+        const insertedOptions = [];
+        if (type !== 'open-ended' && options.length > 0) {
+            for (const optionText of options) {
+                const newOption = await pool.query(
+                    'INSERT INTO poll_options (poll_id, text) VALUES ($1, $2) RETURNING *',
+                    [pollId, optionText]
+                );
+                insertedOptions.push(newOption.rows[0]);
+            }
+        }
+
+        return res.status(201).json({
+            message: 'Poll created successfully',
+            poll: newPoll.rows[0],
+            options: insertedOptions
+        });
+    } catch (err) {
+        console.error('Create poll route error:', err);
+        return res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
+});
+
 export default router 
 
