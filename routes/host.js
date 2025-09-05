@@ -286,7 +286,7 @@ router.put('/polls/:pollId/close', authenticateToken, async (req, res) => {
 
 
 // Get poll results
-router.get('/polls/:pollId/results', authMiddleware, async (req, res) => {
+router.get('/polls/:pollId/results', authenticateToken, async (req, res) => {
     try {
         const { pollId } = req.params;
         const hostId = req.user.id;
