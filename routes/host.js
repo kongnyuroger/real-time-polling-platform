@@ -227,5 +227,62 @@ router.post('/sessions/:sessionId/polls', authenticateToken, async (req, res) =>
     }
 });
 
+
+
+// Publish a poll
+router.put('/polls/:pollId/publish', authenticateToken, async (req, res) => {
+    try {
+        const { pollId } = req.params;
+        const hostId = req.user.id;
+
+        const result = await pool.query(
+            'UPDATE polls SET status = $1 WHERE id = $2 AND session_id IN (SELECT id FROM sessions WHERE host_id = $3) RETURNING *',
+            ['published', pollId, hostId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Poll not found or forbidden' });
+        }
+
+        return res.status(200).json({
+            message: 'Poll published successfully',
+            poll: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Publish poll route error:', err);
+        return res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
+});
+
+
+
+//colse poll
+router.put('/polls/:pollId/close', authenticateToken, async (req, res) => {
+    try {
+        const { pollId } = req.params;
+        const hostId = req.user.id;
+
+        const result = await pool.query(
+            'UPDATE polls SET status = $1 WHERE id = $2 AND session_id IN (SELECT id FROM sessions WHERE host_id = $3) RETURNING *',
+            ['closed', pollId, hostId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Poll not found or forbidden' });
+        }
+
+        return res.status(200).json({
+            message: 'Poll closed successfully',
+            poll: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Close poll route error:', err);
+        return res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
+});
+
+
 export default router 
 
