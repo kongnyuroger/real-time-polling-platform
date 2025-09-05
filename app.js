@@ -6,7 +6,8 @@ import path from 'path'
 import createTables from './config/db-init.js'
 
 import  indexRouter from './routes/index.js';
-import authRouter from './routes/host.js';
+import hostRouter from './routes/host.js';
+import participantRouter from './routes/paticipant.js'
 
 const app = express();
 createTables();
@@ -21,7 +22,8 @@ app.use(cookieParser());
 
 
 app.use('/', indexRouter);
-app.use('/api/host', authRouter);
+app.use('/api/host', hostRouter);
+app.use('/api/paticipant',participantRouter)
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
