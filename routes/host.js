@@ -284,5 +284,58 @@ router.put('/polls/:pollId/close', authenticateToken, async (req, res) => {
 });
 
 
+
+// Get poll results
+router.get('/polls/:pollId/results', authMiddleware, async (req, res) => {
+    try {
+        const { pollId } = req.params;
+        const hostId = req.user.id;
+
+        // Verify that the poll exists and belongs to the authenticated host
+        const pollResult = await pool.query(
+            'SELECT * FROM polls WHERE id = $1 AND session_id IN (SELECT id FROM sessions WHERE host_id = $2)',
+            [pollId, hostId]
+        );
+        if (pollResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Poll not found or forbidden' });
+        }
+        const poll = pollResult.rows[0];
+
+        // Fetch all responses for the poll and join with the participants table
+        const responsesResult = await pool.query(
+            `SELECT 
+                r.id AS response_id,
+                r.response_data,
+                p.name AS participant_name,
+                p.email AS participant_email
+            FROM responses r
+            JOIN participants p ON r.participant_id = p.id
+            WHERE r.poll_id = $1`,
+            [pollId]
+        );
+        const responses = responsesResult.rows;
+
+        // Fetch options for non-open-ended polls to provide context for results
+        let options = [];
+        if (poll.type !== 'open-ended') {
+            const optionsResult = await pool.query('SELECT id, text FROM poll_options WHERE poll_id = $1', [pollId]);
+            options = optionsResult.rows;
+        }
+
+        return res.status(200).json({
+            message: 'Poll results retrieved successfully',
+            poll: poll,
+            options: options,
+            responses: responses
+        });
+    } catch (err) {
+        console.error('Get poll results route error:', err);
+        return res.status(500).json({ error: 'Internal server error', message: err.message });
+    }
+});
+
+
+
+
 export default router 
 
