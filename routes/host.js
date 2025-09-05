@@ -16,7 +16,10 @@ router.post('/register', async function(req, res, next){
     if (!name || !password || !email) {
         return res.status(400).json({ error: 'name and password and email required' });
     }
-    const checkExist = await pool.query('SELECT * from hosts where email = $1',[email])
+    const emailNormalized = email.toLowerCase();
+    const checkExist = await pool.query(
+      'SELECT * from hosts where email ILIKE $1',[emailNormalized]
+    )
     if(password.length < 8){
         return res.status(400).json({ error: 'password must be at least 8 characters' });    
     }
@@ -28,7 +31,7 @@ router.post('/register', async function(req, res, next){
       'INSERT INTO hosts (name, password_hash, email) VALUES ($1, $2, $3) RETURNING name, email',
       [name, hashPassword, email]
     );
-    return res.json({message: "successfuly registered", newUser})
+    return res.json({message: "successfuly registered", newUser: newUser.rows[0]})
     }
    
     return res.json({message: "user already exist"})
@@ -39,20 +42,24 @@ router.post('/register', async function(req, res, next){
 })
 
 //login
-router.post('/login', authlimit, async (req, res) => {
+router.post('/login', async (req, res) => {
   try{ 
     const {email, password} = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'email and password required' });
     }
-
-    const checkExist = await pool.query('SELECT * from hosts where email = $1',[email])
-
+    const emailNormalized = email.toLowerCase();
+    const checkExist = await pool.query(
+      'SELECT * from hosts where email ILIKE $1',[emailNormalized]
+    )
+    console.log(checkExist.rows[0])
     if (checkExist.rows.length === 0) {
       return res.status(401).json({ error: 'invalid credentials' });
     }
     const user = checkExist.rows[0]
     const passwordOk = await bcrypt.compare(password, user.password_hash);
+    console.log("checking password")
+    console.log(passwordOk)
     if (!passwordOk) {
       return res.status(401).json({ error: 'invalid credentials' });
     }
@@ -60,7 +67,7 @@ router.post('/login', authlimit, async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.name , email: user.email},
       process.env.SECRET_KEY,
-      { expiresIn: '1h' }
+      { expiresIn: '6h' }
     );
 
     return res.json({ message: 'Login successful', token });
