@@ -225,7 +225,7 @@ router.put('/polls/:pollId/publish', auth, async (req, res) => {
 
     // Emit the event to all clients in the session's room
     req.app.io.to(`session-${sessionId}`).emit('pollPublished', pollData);
-
+    
     res.json({ message: 'Poll published successfully', poll: pollData });
 
   } catch (err) {
@@ -260,21 +260,56 @@ router.get('/polls/:pollId/results', auth, async (req, res) => {
   try {
     const { pollId } = req.params;
     const hostId = req.user.id;
+
     // Verify the host owns the poll's session
     const checkPoll = await pool.query(
       'SELECT s.host_id FROM polls p JOIN sessions s ON p.session_id = s.id WHERE p.id = $1',
       [pollId]
     );
+
     if (checkPoll.rows.length === 0 || checkPoll.rows[0].host_id !== hostId) {
       return res.status(404).json({ error: 'Poll not found or not authorized' });
     }
-    const results = await pool.query(
-      `SELECT r.response_data, pa.name as participant_name, pa.email
-       FROM responses r
-       JOIN participants pa ON r.participant_id = pa.id
-       WHERE r.poll_id = $1`,
+
+    // Get poll type (so we know if it's open-ended or option-based)
+    const pollInfo = await pool.query(
+      'SELECT type FROM polls WHERE id = $1',
       [pollId]
     );
+    if (pollInfo.rows.length === 0) {
+      return res.status(404).json({ error: 'Poll not found' });
+    }
+    const pollType = pollInfo.rows[0].type;
+
+    let results;
+
+    if (pollType === 'open-ended') {
+      // For open-ended, just return text
+      results = await pool.query(
+        `SELECT r.response_data, pa.name as participant_name, pa.email
+         FROM responses r
+         JOIN participants pa ON r.participant_id = pa.id
+         WHERE r.poll_id = $1`,
+        [pollId]
+      );
+    } else {
+      // For single-choice or multiple-choice, join options to get option text
+      results = await pool.query(
+        `SELECT 
+            r.response_data, 
+            pa.name AS participant_name, 
+            pa.email,
+            o.text AS option_text
+         FROM responses r
+         JOIN participants pa ON r.participant_id = pa.id
+         LEFT JOIN poll_options o 
+           ON (r.response_data::jsonb ->> 'optionId')::int = o.id
+           OR o.id = ANY(SELECT jsonb_array_elements_text(r.response_data::jsonb -> 'optionIds')::int)
+         WHERE r.poll_id = $1`,
+        [pollId]
+      );
+    }
+
     res.json({ results: results.rows });
   } catch (err) {
     console.error('Get poll results route error:', err);
