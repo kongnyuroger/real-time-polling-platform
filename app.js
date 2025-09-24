@@ -22,6 +22,8 @@ const io = new Server(server, {
 });
 createTables();
 
+app.set("io", io);
+
 // Middleware
 app.use(cors());
 app.use(logger('dev'));
@@ -30,10 +32,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 // Pass io to the routers
-app.use((req, res, next) => {
-    req.app.io = io;
-    next();
-});
+
 
 // Routes
 app.use('/', indexRouter);
@@ -47,6 +46,7 @@ io.on('connection', (socket) => {
     // Participant joins a session room
     socket.on('joinSession', (sessionId) => {
         socket.join(`session-${sessionId}`);
+        console.log("i joined the session")
         console.log(`User ${socket.id} joined session-${sessionId}`);
     });
 

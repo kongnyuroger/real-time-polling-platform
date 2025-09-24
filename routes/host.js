@@ -207,7 +207,7 @@ router.put('/polls/:pollId/publish', auth, async (req, res) => {
     if (checkPoll.rows.length === 0 || checkPoll.rows[0].host_id !== hostId) {
       return res.status(404).json({ error: 'Poll not found or not authorized' });
     }
-    
+    console.log(checkPoll.rows[0]);
     const sessionId = checkPoll.rows[0].session_id;
 
     await pool.query('UPDATE polls SET status = $1 WHERE id = $2', ['published', pollId]);
@@ -224,8 +224,8 @@ router.put('/polls/:pollId/publish', auth, async (req, res) => {
     const pollData = publishedPoll.rows[0];
 
     // Emit the event to all clients in the session's room
-    req.app.io.to(`session-${sessionId}`).emit('pollPublished', pollData);
-    
+   const io = req.app.get("io");
+    io.to(`session-${sessionId}`).emit('pollPublished', pollData);
     res.json({ message: 'Poll published successfully', poll: pollData });
 
   } catch (err) {

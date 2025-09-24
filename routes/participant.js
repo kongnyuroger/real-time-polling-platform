@@ -136,7 +136,8 @@ router.post('/polls/:pollId/submit', async (req, res) => {
     };
 
     // Emit the new response to all clients in the session room
-    req.app.io.to(`session-${sessionId}`).emit('newResponse', fullResponseData);
+    const io = req.app.get("io");
+    io.to(`session-${sessionId}`).emit('newResponse', fullResponseData);
 
     res.status(201).json({ 
       message: 'Response submitted successfully',
