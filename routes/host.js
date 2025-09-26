@@ -4,25 +4,28 @@ import bcrypt from 'bcrypt'
 import pool from '../config/db.js'
 import auth from '../middleware/auth.js'
 import authlimit from '../middleware/ratelimiting.js'
+import { loginValidation, registerValidation } from '../middleware/regValidation.js'
+import { validationResult } from 'express-validator'
+
 
 import 'dotenv/config'
 
 const router = express()
 
 //Register user
-router.post('/register', async function(req, res, next){
+router.post('/register', registerValidation, async function(req, res, next){
   try{ 
     const {name, password, email} = req.body;
-    if (!name || !password || !email) {
-        return res.status(400).json({ error: 'name and password and email required' });
+     const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
     const emailNormalized = email.toLowerCase();
     const checkExist = await pool.query(
       'SELECT * from hosts where email ILIKE $1',[emailNormalized]
     )
-    if(password.length < 8){
-        return res.status(400).json({ error: 'password must be at least 8 characters' });    
-    }
+    
     const hashPassword = await bcrypt.hash(password, 10)
 
     if(checkExist.rows.length === 0){
@@ -42,9 +45,14 @@ router.post('/register', async function(req, res, next){
 })
 
 //login
-router.post('/login', async (req, res) => {
+router.post('/login', authlimit, loginValidation, async (req, res) => {
   try{ 
     const {email, password} = req.body;
+    const errors = validationResult(req)
+    if(!errors.isEmpty()){
+        return res.status(400).json({ errors: errors.array() });
+
+    }
     if (!email || !password) {
       return res.status(400).json({ error: 'email and password required' });
     }
@@ -52,16 +60,14 @@ router.post('/login', async (req, res) => {
     const checkExist = await pool.query(
       'SELECT * from hosts where email ILIKE $1',[emailNormalized]
     )
-    console.log(checkExist.rows[0])
     if (checkExist.rows.length === 0) {
       return res.status(401).json({ error: 'invalid credentials' });
     }
     const user = checkExist.rows[0]
     const passwordOk = await bcrypt.compare(password, user.password_hash);
-    console.log("checking password")
-    console.log(passwordOk)
+   
     if (!passwordOk) {
-      return res.status(401).json({ error: 'invalid credentials' });
+      return res.status(401).json({ error: 'wrong Password' });
     }
 
     const token = jwt.sign(
@@ -283,32 +289,36 @@ router.get('/polls/:pollId/results', auth, async (req, res) => {
 
     let results;
 
-    if (pollType === 'open-ended') {
-      // For open-ended, just return text
-      results = await pool.query(
-        `SELECT r.response_data, pa.name as participant_name, pa.email
-         FROM responses r
-         JOIN participants pa ON r.participant_id = pa.id
-         WHERE r.poll_id = $1`,
-        [pollId]
-      );
-    } else {
-      // For single-choice or multiple-choice, join options to get option text
-      results = await pool.query(
-        `SELECT 
-            r.response_data, 
-            pa.name AS participant_name, 
-            pa.email,
-            o.text AS option_text
-         FROM responses r
-         JOIN participants pa ON r.participant_id = pa.id
-         LEFT JOIN poll_options o 
-           ON (r.response_data::jsonb ->> 'optionId')::int = o.id
-           OR o.id = ANY(SELECT jsonb_array_elements_text(r.response_data::jsonb -> 'optionIds')::int)
-         WHERE r.poll_id = $1`,
-        [pollId]
-      );
-    }
+   if (pollType === 'open-ended') {
+  results = await pool.query(
+    `SELECT 
+        r.response_data, 
+        pa.name AS participant_name, 
+        pa.email
+     FROM responses r
+     JOIN participants pa ON r.participant_id = pa.id
+     WHERE r.poll_id = $1`,
+    [pollId]
+  )
+} else {
+  results = await pool.query(
+    `SELECT 
+        pa.name AS participant_name,
+        pa.email,
+        o.text AS option_text
+     FROM responses r
+     JOIN participants pa ON r.participant_id = pa.id
+     JOIN LATERAL (
+        SELECT (r.response_data::jsonb ->> 'optionId')::int AS option_id
+        UNION ALL
+        SELECT (jsonb_array_elements_text(r.response_data::jsonb -> 'optionIds'))::int
+     ) x ON TRUE
+     JOIN poll_options o ON o.id = x.option_id
+     WHERE r.poll_id = $1`,
+    [pollId]
+  )
+}
+
 
     res.json({ results: results.rows });
   } catch (err) {
