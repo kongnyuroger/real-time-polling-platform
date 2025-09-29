@@ -8,13 +8,19 @@
     "dev": "nodemon ./bin/ww"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cookie-parser": "~1.4.7",
     "debug": "~4.4.1",
     "dotenv": "^17.2.2",
     "express": "~5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "express-validator": "^7.2.1",
     "http-errors": "~2.0.0",
-    "jade": "~1.11.0",
-    "morgan": "~1.10.1"
+    "jade": "^0.31.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "~1.10.1",
+    "pg": "^8.16.3",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
