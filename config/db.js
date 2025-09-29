@@ -6,7 +6,7 @@ const { Pool } = pkg;
 //connectionString: process.env.DATABASE_URL,
 const pool = new Pool({
 
-  host: process.env.DB_HOST || localhost,
+  host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER,
   database: process.env.DB_NAME || "pollingdb",
   password: process.env.Db_PASSWORD || '1234',
