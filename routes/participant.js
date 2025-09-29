@@ -92,62 +92,32 @@ router.get('/sessions/:sessionCode/polls', async (req, res) => {
   }
 });
 
-// Submit a poll response
+
+// Submit or update poll response
 router.post('/polls/:pollId/submit', async (req, res) => {
+  const { pollId } = req.params;
+  const { participantId, responseData } = req.body;
+
+  if (!participantId || !responseData) {
+    return res.status(400).json({ error: 'Missing participantId or responseData' });
+  }
+
   try {
-    const { pollId } = req.params;
-    const { participantId, responseData } = req.body;
-
-    if (!participantId || !responseData) {
-      return res.status(400).json({ error: 'Participant ID and response data are required' });
-    }
-
-    // Verify participant and poll exist and are linked to the same session
-    const checkRel = await pool.query(`
-      SELECT p.id AS poll_id, p.session_id, pa.id AS participant_id 
-      FROM polls p 
-      JOIN participants pa ON p.session_id = pa.session_id 
-      WHERE p.id = $1 AND pa.id = $2`, 
-      [pollId, participantId]
-    );
-
-    if (checkRel.rows.length === 0) {
-      return res.status(404).json({ error: 'Poll or participant not found in the same session' });
-    }
-    
-    const sessionId = checkRel.rows[0].session_id;
-
-    // Insert the response
-    const newResponse = await pool.query(
-      'INSERT INTO responses (poll_id, participant_id, response_data) VALUES ($1, $2, $3) RETURNING id',
+    await pool.query(
+      `INSERT INTO responses (poll_id, participant_id, response_data)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (poll_id, participant_id)
+       DO UPDATE SET response_data = EXCLUDED.response_data`,
       [pollId, participantId, responseData]
     );
 
-    // Fetch participant info for the real-time update
-    const participantInfo = await pool.query(
-      'SELECT name, email FROM participants WHERE id = $1', 
-      [participantId]
-    );
-
-    const fullResponseData = {
-      pollId: pollId,
-      responseData: responseData,
-      participant: participantInfo.rows[0]
-    };
-
-    // Emit the new response to all clients in the session room
-    const io = req.app.get("io");
-    io.to(`session-${sessionId}`).emit('newResponse', fullResponseData);
-
-    res.status(201).json({ 
-      message: 'Response submitted successfully',
-      responseId: newResponse.rows[0].id
-    });
-
+    res.json({ success: true, message: 'Response saved successfully' });
   } catch (err) {
-    console.error('Submit response route error:', err);
-    res.status(500).json({ error: 'Internal server error', message: err.message });
+    console.error('Error saving response:', err);
+    res.status(500).json({ error: 'Error saving response' });
   }
 });
+
+
 
 export default router

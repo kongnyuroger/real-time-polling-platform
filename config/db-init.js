@@ -59,7 +59,8 @@ async function createTables() {
         id SERIAL PRIMARY KEY,
         poll_id INTEGER REFERENCES polls(id) ON DELETE CASCADE,
         participant_id INTEGER REFERENCES participants(id) ON DELETE CASCADE,
-        response_data JSONB NOT NULL
+        response_data JSONB NOT NULL,
+        UNIQUE(poll_id, participant_id)
       );
     `);
 
@@ -69,4 +70,4 @@ async function createTables() {
   }
 }
 
- export default createTables;
+export default createTables;

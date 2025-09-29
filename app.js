@@ -16,7 +16,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: '*', // Adjust this for production
+        origin: 'http://localhost:5173/', // Adjust this for production
         methods: ['GET', 'POST', 'PUT']
     }
 });
