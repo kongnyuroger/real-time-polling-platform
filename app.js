@@ -11,12 +11,14 @@ import cors from 'cors';
 import indexRouter from './routes/index.js';
 import hostRouter from './routes/host.js';
 import participantRouter from './routes/participant.js'
+import dotenv from 'dotenv'
 
+dotenv.config()
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: 'http://localhost:5173/', // Adjust this for production
+        origin: process.env.ORIGIN , // Adjust this for production
         methods: ['GET', 'POST', 'PUT']
     }
 });

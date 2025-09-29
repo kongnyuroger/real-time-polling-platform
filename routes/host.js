@@ -6,10 +6,11 @@ import auth from '../middleware/auth.js'
 import authlimit from '../middleware/ratelimiting.js'
 import { loginValidation, registerValidation } from '../middleware/regValidation.js'
 import { validationResult } from 'express-validator'
+import dotenv from 'dotenv';
 
 
 import 'dotenv/config'
-
+dotenv.config();
 const router = express()
 
 //Register user
@@ -73,7 +74,7 @@ router.post('/login', authlimit, loginValidation, async (req, res) => {
     const token = jwt.sign(
       { id: user.id, username: user.name , email: user.email},
       process.env.SECRET_KEY,
-      { expiresIn: '6h' }
+      { expiresIn: process.env.TOKEN_LENGTH }
     );
 
     return res.json({ message: 'Login successful', token });
