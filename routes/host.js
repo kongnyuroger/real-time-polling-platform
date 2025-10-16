@@ -46,7 +46,7 @@ router.post('/register', registerValidation, async function(req, res, next){
 })
 
 //login
-router.post('/login', authlimit, loginValidation, async (req, res) => {
+router.post('/login',  loginValidation, async (req, res) => {
   try{ 
     const {email, password} = req.body;
     const errors = validationResult(req)
@@ -324,6 +324,37 @@ router.get('/polls/:pollId/results', auth, async (req, res) => {
     res.json({ results: results.rows });
   } catch (err) {
     console.error('Get poll results route error:', err);
+    res.status(500).json({ error: 'Internal server error', message: err.message });
+  }
+});
+
+// DELETE /api/host/polls/:pollId
+router.delete('/polls/:pollId', auth, async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const hostId = req.user.id;
+
+    // Verify poll belongs to the current host
+    const checkPoll = await pool.query(
+      `SELECT p.id, s.host_id 
+       FROM polls p 
+       JOIN sessions s ON p.session_id = s.id 
+       WHERE p.id = $1`,
+      [pollId]
+    );
+
+    if (checkPoll.rows.length === 0 || checkPoll.rows[0].host_id !== hostId) {
+      return res.status(404).json({ error: 'Poll not found or not authorized' });
+    }
+
+    // Delete dependent data (responses, options) before poll
+    await pool.query('DELETE FROM responses WHERE poll_id = $1', [pollId]);
+    await pool.query('DELETE FROM poll_options WHERE poll_id = $1', [pollId]);
+    await pool.query('DELETE FROM polls WHERE id = $1', [pollId]);
+
+    res.json({ message: 'Poll deleted successfully' });
+  } catch (err) {
+    console.error('Delete poll route error:', err);
     res.status(500).json({ error: 'Internal server error', message: err.message });
   }
 });
