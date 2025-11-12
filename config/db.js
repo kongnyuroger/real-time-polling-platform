@@ -11,6 +11,7 @@ const pool = new Pool({
   database: process.env.DB_NAME || "pollingdb",
   password: process.env.DB_PASSWORD || '1234',
   port: process.env.DB_PORT || 5432,
+  ssl: {rejectUnauthorized: false}
 });
 
 export default pool;
