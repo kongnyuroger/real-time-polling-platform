@@ -11,7 +11,8 @@ const pool = new Pool({
   database: process.env.DB_NAME || "pollingdb",
   password: process.env.DB_PASSWORD || '1234',
   port: process.env.DB_PORT || 5432,
-  ssl: {rejectUnauthorized: false}
+  // Hosted providers (e.g. Aiven) require SSL; set DB_SSL=false for a local database
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false }
 });
 
 export default pool;

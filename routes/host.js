@@ -14,7 +14,7 @@ dotenv.config();
 const router = express()
 
 //Register user
-router.post('/register', registerValidation, async function(req, res, next){
+router.post('/register', authlimit, registerValidation, async function(req, res, next){
   try{ 
     const {name, password, email} = req.body;
      const errors = validationResult(req);
@@ -46,7 +46,7 @@ router.post('/register', registerValidation, async function(req, res, next){
 })
 
 //login
-router.post('/login',  loginValidation, async (req, res) => {
+router.post('/login', authlimit, loginValidation, async (req, res) => {
   try{ 
     const {email, password} = req.body;
     const errors = validationResult(req)
@@ -248,13 +248,18 @@ router.put('/polls/:pollId/close', auth, async (req, res) => {
     const hostId = req.user.id;
     // Verify the host owns the poll's session
     const checkPoll = await pool.query(
-      'SELECT s.host_id FROM polls p JOIN sessions s ON p.session_id = s.id WHERE p.id = $1',
+      'SELECT p.session_id, s.host_id FROM polls p JOIN sessions s ON p.session_id = s.id WHERE p.id = $1',
       [pollId]
     );
     if (checkPoll.rows.length === 0 || checkPoll.rows[0].host_id !== hostId) {
       return res.status(404).json({ error: 'Poll not found or not authorized' });
     }
+    const sessionId = checkPoll.rows[0].session_id;
+
     await pool.query('UPDATE polls SET status = $1 WHERE id = $2', ['closed', pollId]);
+
+    const io = req.app.get("io");
+    io.to(`session-${sessionId}`).emit('pollClosed', { pollId: Number(pollId) });
     res.json({ message: 'Poll closed successfully' });
   } catch (err) {
     console.error('Close poll route error:', err);

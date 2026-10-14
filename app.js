@@ -26,6 +26,13 @@ createTables();
 
 app.set("io", io);
 
+// Behind a reverse proxy (Railway, Render, ...) the client IP comes from
+// X-Forwarded-For; rate limiting needs it to tell clients apart.
+if (process.env.TRUST_PROXY) {
+    const hops = Number(process.env.TRUST_PROXY);
+    app.set('trust proxy', Number.isNaN(hops) ? process.env.TRUST_PROXY : hops);
+}
+
 // Middleware
 app.use(cors());
 app.use(logger('dev'));
@@ -64,13 +71,14 @@ app.use(function(req, res, next) {
 
 // error handler
 app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
+  const status = err.status || 500;
+  if (status >= 500) console.error(err);
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+  // only expose the stack in development
+  res.status(status).json({
+    error: status >= 500 ? 'Internal server error' : err.message,
+    ...(req.app.get('env') === 'development' && { stack: err.stack })
+  });
 });
 
 export default server;

@@ -11,10 +11,11 @@ Built with **Node.js**, **Express 5**, **PostgreSQL** and **Socket.IO**.
 - **Host accounts**: registration and login with bcrypt-hashed passwords and JWT authentication
 - **Sessions**: hosts create sessions, and each one gets a unique 6-character join code
 - **Polls**: three poll types (`single-choice`, `multiple-choice`, `open-ended`) that move through a `draft → published → closed` lifecycle
-- **Real-time delivery**: publishing a poll sends a `pollPublished` event to every participant in that session's Socket.IO room
+- **Real-time delivery**: publishing a poll, closing it and new responses all send events to that session's Socket.IO room
 - **Participants**: join with a name and email, no account needed; a participant can change their answer by submitting again
 - **Results**: hosts see each participant's response, broken down by option for choice polls
-- **Validation**: request validation with `express-validator`
+- **Validation and rate limiting**: request validation with `express-validator`, and failed register/login attempts are rate-limited
+- **Response rules**: responses are accepted only while a poll is published, and only from participants of that poll's session
 
 ---
 
@@ -78,6 +79,8 @@ Create a `.env` file in the project root:
 # Server
 PORT=3000
 ORIGIN=http://localhost:5173      # Frontend origin allowed to connect to Socket.IO
+NODE_ENV=development              # use production when deployed
+TRUST_PROXY=                      # e.g. 1 when running behind one reverse proxy
 
 # Database
 DB_HOST=localhost
@@ -85,6 +88,7 @@ DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=your_password
 DB_NAME=pollingdb
+DB_SSL=true                       # set to false for a local database without SSL
 
 # Auth
 SECRET_KEY=a_long_random_secret
@@ -95,15 +99,18 @@ TOKEN_LENGTH=1h                   # JWT lifetime, e.g. 15m, 1h, 7d
 | -------------- | -------- | ----------- | --------------------------------------------- |
 | `PORT`         | No       | `3000`      | Port the server listens on                    |
 | `ORIGIN`       | Yes      | n/a         | Allowed CORS origin for Socket.IO             |
+| `NODE_ENV`     | No       | `development` | In `development`, error responses include a stack trace |
+| `TRUST_PROXY`  | No       | unset       | Express `trust proxy` setting (number of proxy hops, or a value Express accepts). Needed behind a reverse proxy so rate limiting sees real client IPs |
 | `DB_HOST`      | No       | `localhost` | PostgreSQL host                               |
 | `DB_PORT`      | No       | `5432`      | PostgreSQL port                               |
 | `DB_USER`      | Yes      | n/a         | PostgreSQL user                               |
 | `DB_PASSWORD`  | No       | `1234`      | PostgreSQL password                           |
 | `DB_NAME`      | No       | `pollingdb` | Database name                                 |
+| `DB_SSL`       | No       | `true`      | Set to `false` to connect without SSL         |
 | `SECRET_KEY`   | Yes      | n/a         | Secret used to sign JWTs                      |
 | `TOKEN_LENGTH` | Yes      | n/a         | JWT expiry (any format `jsonwebtoken` accepts) |
 
-> **Note:** The database connection uses SSL (`ssl: { rejectUnauthorized: false }`), which hosted providers such as Aiven require. A local PostgreSQL install without SSL will refuse the connection. Either enable SSL locally or remove the `ssl` option in `config/db.js` for local development.
+> **Note:** The database connection uses SSL by default, which hosted providers such as Aiven require. For a local PostgreSQL install without SSL, set `DB_SSL=false`.
 
 ### Running
 
@@ -169,6 +176,8 @@ Content-Type: application/json
 ```
 
 Validation: `name` must be at least 3 characters, `email` must be a valid email, and `password` must be at least 8 characters.
+
+`/register` and `/login` are rate-limited: after 5 failed requests from the same IP within 5 minutes, further requests get `429 Too Many Requests` until the window resets. Successful requests don't count.
 
 #### Login
 
@@ -275,6 +284,8 @@ The shape of `responseData` depends on the poll type:
 
 Submitting again for the same poll replaces the earlier response.
 
+The poll must be `published` (otherwise `403`), and the participant must belong to the poll's session (otherwise `404`).
+
 ---
 
 ## Real-Time Events (Socket.IO)
@@ -285,6 +296,8 @@ Clients connect to the same host and port as the API.
 | ---------------- | --------------- | -------------------------- | ------------------------------------------------------ |
 | client → server  | `joinSession`   | `sessionId` (number)       | Join the room `session-<sessionId>`                    |
 | server → client  | `pollPublished` | poll object (see below)    | Sent to the room when the host publishes a poll        |
+| server → client  | `pollClosed`    | `{ pollId }`               | Sent to the room when the host closes a poll           |
+| server → client  | `responseSubmitted` | `{ pollId }`           | Sent to the room when a participant submits or updates a response; the host can refetch results |
 
 `pollPublished` payload:
 
@@ -312,6 +325,10 @@ socket.emit("joinSession", sessionId);
 socket.on("pollPublished", (poll) => {
   console.log("New poll:", poll.question, poll.options);
 });
+
+socket.on("pollClosed", ({ pollId }) => {
+  console.log("Poll closed:", pollId);
+});
 ```
 
 ---
@@ -322,26 +339,26 @@ socket.on("pollPublished", (poll) => {
 2. The host **creates a session** and shares its `session_code` with participants.
 3. Participants **join** with the code, get a `participantId` and `sessionId`, and emit `joinSession` over Socket.IO.
 4. The host **creates polls** (as drafts) and **publishes** them when ready. Participants receive `pollPublished` straight away.
-5. Participants **submit** responses and can change them later.
-6. The host **views results** and **closes** the poll.
+5. Participants **submit** responses and can change them while the poll is open. Each submission emits `responseSubmitted`.
+6. The host **views results** and **closes** the poll. Participants receive `pollClosed`.
 
 ---
 
 ## Deployment
 
-The server listens on `0.0.0.0` on `PORT`, so it works on platforms like Railway, Render or Fly.io. Set the environment variables above in your platform's dashboard. Point the `DB_*` variables at a hosted PostgreSQL instance (the project currently uses Aiven) and set `ORIGIN` to your frontend's URL.
+The server listens on `0.0.0.0` on `PORT`, so it works on platforms like Railway, Render or Fly.io. Set the environment variables above in your platform's dashboard. Point the `DB_*` variables at a hosted PostgreSQL instance (the project currently uses Aiven) set `ORIGIN` to your frontend's URL, and set `NODE_ENV=production`. Platforms like these run the app behind a reverse proxy, so also set `TRUST_PROXY=1`. Without it, every client appears to share the proxy's IP and the auth rate limit would apply to all of them together.
 
 ---
 
-## Known Issues / TODO
+## Development
 
-- The `dev` script points to `./bin/ww`; it should be `nodemon ./bin/www`.
-- `cors` is imported in `app.js` but not listed in `package.json` dependencies. It currently resolves only as a transitive dependency, so run `npm install cors` to make it explicit.
-- The rate limiter in `middleware/ratelimiting.js` is defined but not yet applied to `/register` or `/login`.
-- The error handler calls `res.render('error')`, but no view engine is configured, so unhandled errors (including 404s) don't render properly. Either set `app.set('view engine', 'jade')` or return JSON errors.
-- Only publishing emits a socket event. Closing a poll and new responses are not yet pushed to clients.
-- Participant submissions aren't checked against the poll's status or session, so a closed poll still accepts responses.
-- No automated tests yet.
+```bash
+npm run dev   # restarts the server on file changes (nodemon)
+```
+
+## TODO
+
+- Add automated tests.
 
 ---
 

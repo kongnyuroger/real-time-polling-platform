@@ -103,6 +103,22 @@ router.post('/polls/:pollId/submit', async (req, res) => {
   }
 
   try {
+    // Only accept responses to published polls from participants of the poll's session
+    const check = await pool.query(
+      `SELECT p.status, p.session_id
+       FROM polls p
+       JOIN participants pa ON pa.session_id = p.session_id
+       WHERE p.id = $1 AND pa.id = $2`,
+      [pollId, participantId]
+    );
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Poll not found or participant not in this session' });
+    }
+    if (check.rows[0].status !== 'published') {
+      return res.status(403).json({ error: 'This poll is not accepting responses' });
+    }
+    const sessionId = check.rows[0].session_id;
+
     await pool.query(
       `INSERT INTO responses (poll_id, participant_id, response_data)
        VALUES ($1, $2, $3)
@@ -110,6 +126,10 @@ router.post('/polls/:pollId/submit', async (req, res) => {
        DO UPDATE SET response_data = EXCLUDED.response_data`,
       [pollId, participantId, responseData]
     );
+
+    // Tell the room a response came in; the host refetches results
+    const io = req.app.get("io");
+    io.to(`session-${sessionId}`).emit('responseSubmitted', { pollId: Number(pollId) });
 
     res.json({ success: true, message: 'Response saved successfully' });
   } catch (err) {
